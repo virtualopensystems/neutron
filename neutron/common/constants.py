@@ -67,6 +67,8 @@ TYPE_LONG = "long"
 TYPE_FLOAT = "float"
 TYPE_LIST = "list"
 TYPE_DICT = "dict"
+TYPE_QOS_DSCP = "dscp"
+TYPE_QOS_RATELIMIT = "ratelimit"
 
 AGENT_TYPE_DHCP = 'DHCP agent'
 AGENT_TYPE_OVS = 'Open vSwitch agent'
