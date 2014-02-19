@@ -15,14 +15,18 @@
 #    under the License.
 #
 # @author: Sean M. Collins, sean@coreitpro.com, Comcast #
+import contextlib
 import mock
 
+from neutron.agent.linux import ovs_lib
+from neutron.agent.linux import utils
 from neutron.agent import rpc as agent_rpc
 from neutron.db import qos_rpc_base as qos_db_rpc
 from neutron.openstack.common.rpc import proxy
 from neutron.services.qos.agents import qos_rpc as qos_agent_rpc
 from neutron.tests import base
 from neutron.tests.unit import test_extension_qos as test_qos
+from oslo.config import cfg
 
 
 QOS_BASE_PACKAGE = 'neutron.services.qos.drivers'
@@ -172,3 +176,72 @@ class QoSAgentRpcApiMixinTestCase(base.BaseTestCase):
                         'namespace': None},
                        version=qos_agent_rpc.QOS_RPC_VERSION,
                        topic='fake_topic-qos-update')])
+
+
+class TestQoSAgentWithOpenFlow(base.BaseTestCase):
+    QOS_DRIVER = OPENFLOW_DRIVER
+
+    def setUp(self):
+        super(TestQoSAgentWithOpenFlow, self).setUp()
+        lvm1 = mock.Mock()
+        lvm1.vlan = 'vlan1'
+        lvm1.segmentation_id = None
+        lvm2 = mock.Mock()
+        lvm2.vlan = 'vlan2'
+        lvm2.segmentation_id = 1
+        local_vlan_map = {'net1': lvm1, 'net2': lvm2}
+        cfg.CONF.set_override(
+            'qos_driver',
+            self.QOS_DRIVER,
+            group="qos")
+        self.root_helper = "sudo"
+        self.PHY_BR_NAME = "fake-br"
+        self.INT_BR_NAME = 'fake-br-int'
+        self.phy_br = ovs_lib.OVSBridge(self.PHY_BR_NAME, self.root_helper)
+        self.int_br = ovs_lib.OVSBridge(self.INT_BR_NAME, self.root_helper)
+        self.agent = qos_agent_rpc.QoSAgentRpcMixin()
+        self.agent.init_qos(ext_bridge=self.phy_br, int_bridge=self.int_br,
+                            local_vlan_map=local_vlan_map)
+        self.qos = self.agent.qos
+        rpc = mock.Mock()
+        self.agent.plugin_rpc = rpc
+        fake_qos_policies = {"dscp": "32"}
+        rpc.get_policy_for_qos.return_value = fake_qos_policies
+
+    def test_network_qos_deleted(self):
+        with mock.patch.object(utils, "execute") as exec_fn:
+            exec_fn.return_value = False
+            self.agent.qos.qoses = {"net1": True}
+            self.agent.network_qos_deleted(None, 'fake-qos', 'net1')
+            self.assertNotIn('net2', self.agent.qos.qoses)
+
+    def test_network_qos_updated(self):
+        with mock.patch.object(utils, "execute") as exec_fn:
+            exec_fn.return_value = False
+            self.agent.network_qos_updated(None, 'fake-qos', 'net2')
+            self.assertIn('net2', self.agent.qos.qoses)
+
+    def test_port_qos_updated(self):
+        with contextlib.nested(
+            mock.patch.object(utils, "execute"),
+            mock.patch.object(ovs_lib.OVSBridge, 'get_vif_port_by_id')
+        ) as (exec_fn, br_fn):
+            exec_fn.return_value = False
+            port = mock.Mock()
+            port.ofport = 1
+            br_fn.return_value = port
+            self.agent.port_qos_updated(None, 'fake-qos', 'port1')
+            self.assertIn('port1', self.agent.qos.qoses)
+
+    def test_port_qos_deleted(self):
+        with contextlib.nested(
+            mock.patch.object(utils, "execute"),
+            mock.patch.object(ovs_lib.OVSBridge, 'get_vif_port_by_id')
+        ) as (exec_fn, br_fn):
+            exec_fn.return_value = False
+            self.agent.qos.qoses = {"port1": True}
+            port = mock.Mock()
+            port.ofport = 1
+            br_fn.return_value = port
+            self.agent.port_qos_deleted(None, 'fake-qos', 'port1')
+            self.assertNotIn('port1', self.agent.qos.qoses)

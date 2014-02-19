@@ -20,6 +20,7 @@ from neutron.common import topics
 from neutron.db import agents_db
 from neutron.db import api as db_api
 from neutron.db import dhcp_rpc_base
+from neutron.db import qos_rpc_base as qos_db_rpc
 from neutron.db import securitygroups_rpc_base as sg_db_rpc
 from neutron import manager
 from neutron.openstack.common import log
@@ -28,6 +29,7 @@ from neutron.openstack.common import uuidutils
 from neutron.plugins.ml2 import db
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import type_tunnel
+from neutron.services.qos.agents import qos_rpc
 # REVISIT(kmestery): Allow the type and mechanism drivers to supply the
 # mixins and eventually remove the direct dependencies on type_tunnel.
 
@@ -39,7 +41,8 @@ TAP_DEVICE_PREFIX_LENGTH = 3
 
 class RpcCallbacks(dhcp_rpc_base.DhcpRpcCallbackMixin,
                    sg_db_rpc.SecurityGroupServerRpcCallbackMixin,
-                   type_tunnel.TunnelRpcCallbackMixin):
+                   type_tunnel.TunnelRpcCallbackMixin,
+                   qos_db_rpc.QoSServerRpcCallbackMixin):
 
     RPC_API_VERSION = '1.1'
     # history
@@ -205,17 +208,19 @@ class RpcCallbacks(dhcp_rpc_base.DhcpRpcCallbackMixin,
 
 class AgentNotifierApi(proxy.RpcProxy,
                        sg_rpc.SecurityGroupAgentRpcApiMixin,
-                       type_tunnel.TunnelAgentRpcApiMixin):
+                       type_tunnel.TunnelAgentRpcApiMixin,
+                       qos_rpc.QoSAgentRpcApiMixin):
     """Agent side of the openvswitch rpc API.
 
     API version history:
         1.0 - Initial version.
         1.1 - Added get_active_networks_info, create_dhcp_port,
               update_dhcp_port, and removed get_dhcp_port methods.
+        1.2 - QoS API support
 
     """
 
-    BASE_RPC_API_VERSION = '1.1'
+    BASE_RPC_API_VERSION = '1.2'
 
     def __init__(self, topic):
         super(AgentNotifierApi, self).__init__(

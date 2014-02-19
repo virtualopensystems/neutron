@@ -30,6 +30,7 @@ from neutron.db import db_base_plugin_v2
 from neutron.db import external_net_db
 from neutron.db import extradhcpopt_db
 from neutron.db import models_v2
+from neutron.db import qos_rpc_base as qos_db_rpc
 from neutron.db import quota_db  # noqa
 from neutron.db import securitygroups_rpc_base as sg_db_rpc
 from neutron.extensions import allowedaddresspairs as addr_pair
@@ -37,6 +38,7 @@ from neutron.extensions import extra_dhcp_opt as edo_ext
 from neutron.extensions import multiprovidernet as mpnet
 from neutron.extensions import portbindings
 from neutron.extensions import providernet as provider
+from neutron.extensions import qos
 from neutron import manager
 from neutron.openstack.common import db as os_db
 from neutron.openstack.common import excutils
@@ -67,7 +69,8 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                 sg_db_rpc.SecurityGroupServerRpcMixin,
                 agentschedulers_db.DhcpAgentSchedulerDbMixin,
                 addr_pair_db.AllowedAddressPairsMixin,
-                extradhcpopt_db.ExtraDhcpOptMixin):
+                extradhcpopt_db.ExtraDhcpOptMixin,
+                qos_db_rpc.QoSServerRpcMixin):
 
     """Implement the Neutron L2 abstractions using modules.
 
@@ -90,7 +93,7 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                                     "quotas", "security-group", "agent",
                                     "dhcp_agent_scheduler",
                                     "multi-provider", "allowed-address-pairs",
-                                    "extra_dhcp_opt"]
+                                    "extra_dhcp_opt", "quality-of-service"]
 
     @property
     def supported_extension_aliases(self):
@@ -202,6 +205,16 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
             network[provider.NETWORK_TYPE] = segment[api.NETWORK_TYPE]
             network[provider.PHYSICAL_NETWORK] = segment[api.PHYSICAL_NETWORK]
             network[provider.SEGMENTATION_ID] = segment[api.SEGMENTATION_ID]
+
+    def _extend_network_dict_qos(self, context, network):
+        mapping = self.get_mapping_for_network(context, network['id'])
+        if mapping:
+            network[qos.QOS] = mapping[0].qos_id
+
+    def _extend_port_dict_qos(self, context, port):
+        mapping = self.get_mapping_for_port(context, port['id'])
+        if mapping:
+            port[qos.QOS] = mapping[0].qos_id
 
     def _filter_nets_provider(self, context, nets, filters):
         # TODO(rkukura): Implement filtering.
@@ -408,6 +421,9 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                                                                     network)
             self._process_l3_update(context, updated_network,
                                     network['network'])
+            self._process_qos_network_update(context, updated_network,
+                                             network['network'])
+            self._extend_network_dict_qos(context, updated_network)
             self._extend_network_dict_provider(context, updated_network)
             mech_context = driver_context.NetworkContext(
                 self, context, updated_network,
@@ -426,6 +442,7 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
         with session.begin(subtransactions=True):
             result = super(Ml2Plugin, self).get_network(context, id, None)
             self._extend_network_dict_provider(context, result)
+            self._extend_network_dict_qos(context, result)
 
         return self._fields(result, fields)
 
@@ -438,6 +455,7 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                                             limit, marker, page_reverse)
             for net in nets:
                 self._extend_network_dict_provider(context, net)
+                self._extend_network_dict_qos(context, net)
 
             nets = self._filter_nets_provider(context, nets, filters)
             nets = self._filter_nets_l3(context, nets, filters)
@@ -677,6 +695,8 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
             elif changed_fixed_ips:
                 self._check_fixed_ips_and_address_pairs_no_overlap(
                     context, updated_port)
+            self._process_qos_port_update(context, updated_port, port['port'])
+            self._extend_port_dict_qos(context, updated_port)
             need_port_update_notify |= self.update_security_group_on_port(
                 context, id, port, original_port, updated_port)
             network = self.get_network(context, original_port['network_id'])
@@ -782,6 +802,24 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
             self.mechanism_manager.update_port_postcommit(mech_context)
 
         return True
+
+    def get_port(self, context, id, fields=None):
+        session = context.session
+        with session.begin(subtransactions=True):
+            result = super(Ml2Plugin, self).get_port(context, id, None)
+            self._extend_port_dict_qos(context, result)
+        return self._fields(result, fields)
+
+    def get_ports(self, context, filters=None, fields=None,
+                  sorts=None, limit=None, marker=None, page_reverse=False):
+        session = context.session
+        with session.begin(subtransactions=True):
+            ports = super(Ml2Plugin,
+                          self).get_ports(context, filters, None, sorts,
+                                          limit, marker, page_reverse)
+            for port in ports:
+                self._extend_port_dict_qos(context, port)
+        return [self._fields(port, fields) for port in ports]
 
     def port_bound_to_host(self, port_id, host):
         port_host = db.get_port_binding_host(port_id)
