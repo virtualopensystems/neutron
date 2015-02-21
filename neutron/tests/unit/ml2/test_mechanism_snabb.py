@@ -60,41 +60,60 @@ class SnabbTestCase(test_plugin.NeutronDbPluginV2TestCase):
         self.segment[api.NETWORK_TYPE] = 'mpls'
         self.assertFalse(self.mech.check_segment(self.segment))
 
-class SnabbMechanismTestZone(SnabbTestCase):
+class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
 
     def test_choose_port_any(self):
         """Pick any port when they are all equally good."""
-        self.mech.networks = {'host1': {'port0': {}, 'port1': {}, 'port2': {}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPAddress('101::'), 101)},
+                                        'port1': {'zone1': (IPAddress('201::'), 201)},
+                                        'port2': {'zone1': (IPAddress('301::'), 301)}}}
         self.mech.allocated_bandwidth = {}
-        port = self.mech._choose_port('host1', 5)
+        port = self.mech._choose_port('host1', 'zone1', 6, 5)
         self.assertIsNotNone(port, 'port0')
 
     def test_choose_port_loaded(self):
         """Pick the most loaded port that has capacity available."""
-        self.mech.networks = {'host1': {'port0': {}, 'port1': {}, 'port2': {}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPAddress('101::'), 101)},
+                                        'port1': {'zone1': (IPAddress('201::'), 201)},
+                                        'port2': {'zone1': (IPAddress('301::'), 301)}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 0},
                                          ('host1', 'port1'): {'p2': 1},
                                          ('host1', 'port2'): {'p3': 0}}
-        port = self.mech._choose_port('host1', 5)
+        port = self.mech._choose_port('host1', 'zone1', 6, 5)
         self.assertEqual(port, 'port1')
 
     def test_choose_port_not_overloaded(self):
         """Don't pick the port that will be overloaded."""
-        self.mech.networks = {'host1': {'port0': {}, 'port1': {}, 'port2': {}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPAddress('101::'), 101)},
+                                        'port1': {'zone1': (IPAddress('201::'), 201)},
+                                        'port2': {'zone1': (IPAddress('301::'), 301)}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 1},
                                          ('host1', 'port1'): {'p2': 6},
                                          ('host1', 'port1'): {'p2': 0}}
-        port = self.mech._choose_port('host1', 5)
+        port = self.mech._choose_port('host1', 'zone1', 6, 5)
         self.assertNotEqual(port, 'port1')
 
-    def test_choose_least_overloaded(self):
+    def test_choose_least_overloaded_ipv6(self):
         """Pick the least-overloaded port."""
-        self.mech.networks = {'host1': {'port0': {}, 'port1': {}, 'port2': {}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPAddress('101::'), 101)},
+                                        'port1': {'zone1': (IPAddress('201::'), 201)},
+                                        'port2': {'zone1': (IPAddress('301::'), 301)}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 99},
                                          ('host1', 'port1'): {'p2': 42},
                                          ('host1', 'port2'): {'p3': 76}}
-        port = self.mech._choose_port('host1', 5)
+        port = self.mech._choose_port('host1', 'zone1', 6, 5)
         self.assertEqual(port, 'port1')
+
+    def test_choose_least_overloaded_ipv4(self):
+        """Pick the least-overloaded port when there is IPv4."""
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPAddress('101::'), 101)},
+                                        'port1': {'zone1': (IPAddress('192.168.201.0'), 201)},
+                                        'port2': {'zone1': (IPAddress('301::'), 301)}}}
+        self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 99},
+                                         ('host1', 'port1'): {'p2': 42},
+                                         ('host1', 'port2'): {'p3': 76}}
+        port = self.mech._choose_port('host1', 'zone1', 6, 5)
+        self.assertEqual(port, 'port2')
 
 class SnabbMechanismTestBasicGet(test_plugin.TestBasicGet, SnabbTestCase):
     pass
