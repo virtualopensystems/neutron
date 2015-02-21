@@ -114,7 +114,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def _select_port_with_bandwidth(self, gbps, ports, host_id):
         """Return a port with sufficient bandwidth, or None."""
         best_fit, best_fit_avail = None, None
-        for port_id, zones in ports.items():
+        for port_id, _ in ports.items():
             allocated = self._get_allocated_bandwidth(host_id, port_id)
             avail = PORT_GBPS - allocated
             # Check for a best (tightest) fit
@@ -125,11 +125,11 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def _select_port_least_overloaded(self, ports, host_id):
         """Return the last-overloaded port."""
         best_fit, best_fit_allocated = None, None
-        for port_id, zones in ports.items():
+        for port_id, _ in ports.items():
             allocated = self._get_allocated_bandwidth(host_id, port_id)
             # Check for a best (least loaded) fit
-            if best_fit_allocated is None or allocated < best_fit_allocated:
-                best_fit = port_id
+            if best_fit is None or allocated < best_fit_allocated:
+                best_fit, best_fit_allocated = port_id, allocated
         return best_fit
 
     def bind_port(self, context):
