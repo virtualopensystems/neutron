@@ -91,12 +91,17 @@ class SnabbMechanismDriver(api.MechanismDriver):
                         LOG.error("Bad zone entry: %s", entry)
         return networks
 
-    def _choose_port(self, host_id, gbps):
+    def _choose_port(self, host_id, zone, ip_version, gbps):
         """Choose the most suitable port for a new bandwidth allocation."""
         LOG.debug("Choosing port for %s gbps on host %s",
                   gbps, host_id)
         # Port that best fits, and how many gbps it has available.
-        ports = self.networks[host_id]
+        avail_ports = self.networks[host_id]
+        ports = {}
+        for port_id,zones in avail_ports.items():
+            for name,value in zones.items():
+                if name == zone and value[0].version == ip_version:
+                    ports[port_id] = zones 
         assert not ports is None
         port = self._select_port_with_bandwidth(gbps, ports, host_id)
         if port is None:
@@ -109,7 +114,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def _select_port_with_bandwidth(self, gbps, ports, host_id):
         """Return a port with sufficient bandwidth, or None."""
         best_fit, best_fit_avail = None, None
-        for port_id, zone in ports.items():
+        for port_id, zones in ports.items():
             allocated = self._get_allocated_bandwidth(host_id, port_id)
             avail = PORT_GBPS - allocated
             # Check for a best (tightest) fit
@@ -120,7 +125,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def _select_port_least_overloaded(self, ports, host_id):
         """Return the last-overloaded port."""
         best_fit, best_fit_allocated = None, None
-        for port_id, zone in ports.items():
+        for port_id, zones in ports.items():
             allocated = self._get_allocated_bandwidth(host_id, port_id)
             # Check for a best (least loaded) fit
             if best_fit_allocated is None or allocated < best_fit_allocated:
@@ -150,21 +155,26 @@ class SnabbMechanismDriver(api.MechanismDriver):
             if self.check_segment(segment):
                 db_port_id = context.current['id']
                 host_id = context.current['binding:host_id']
-                port_id = self._choose_port(host_id, gbps)
                 zone = segment[api.SEGMENTATION_ID]
-                # Calculate the correct IP address
                 base_ip = self._assigned_ip(context.current)
                 if base_ip is None:
                     msg = "fixed_ips address required to bind zone port."
                     raise exc.InvalidInput(error_message=msg)
+                base_ip = netaddr.IPAddress(base_ip)
+                port_id = self._choose_port(host_id, zone, base_ip.version, gbps)
+                # Calculate the correct IP address
                 try:
                     subnet, vlan = self.networks[host_id][port_id][zone]
                 except KeyError:
                     msg = ("zone %s not found for host:%s port:%s" %
                            (zone, host_id, port_id))
                     raise exc.InvalidInput(error_message=msg)
-                addr_mask = netaddr.IPAddress('::ffff:ffff:ffff:ffff')
-                vm_ip = (netaddr.IPAddress(base_ip) & addr_mask) | subnet
+
+                if base_ip.version is 6:
+                    addr_mask = netaddr.IPAddress('::ffff:ffff:ffff:ffff')
+                else:
+                    addr_mask = netaddr.IPAddress('0.0.0.255')
+                vm_ip = (base_ip & addr_mask) | subnet
                 # Store all decisions in the port vif_details.
                 vif_details = {portbindings.CAP_PORT_FILTER: True,
                                'zone_host': host_id,
