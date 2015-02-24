@@ -91,23 +91,43 @@ class SnabbMechanismDriver(api.MechanismDriver):
                         LOG.error("Bad zone entry: %s", entry)
         return networks
 
+    def _filter_ports(self, avail_ports, zone, ip_version):
+        """Filter the availabale ports, matching zone and ip version """
+        # zone_ports -   filtered ports that contain
+        #                the requested zone and requested ip version subnet
+        # ipv_ports  -   filtered ports that contain
+        #                the requested zone and reuested ip version,
+        #                but not if there are is othe IP subnet
+        ipv_ports, zone_ports = {}, {}
+
+        for port_id,zones in avail_ports.items():
+            for name,value in zones.items():
+                if name == zone and value[0].version == ip_version:
+                    zone_ports[port_id] = zones
+                    break
+
+        for port_id,zones in zone_ports.items():
+            add_port = True
+            for name,value in zones.items():
+                if value[0].version != ip_version:
+                    add_port = False
+                    break
+            if add_port: ipv_ports[port_id] = zones
+
+        return ipv_ports, zone_ports
+
     def _choose_port(self, host_id, zone, ip_version, gbps):
         """Choose the most suitable port for a new bandwidth allocation."""
         LOG.debug("Choosing port for %s gbps on host %s",
                   gbps, host_id)
         # Port that best fits, and how many gbps it has available.
         avail_ports = self.networks[host_id]
-        ports = {}
-        for port_id,zones in avail_ports.items():
-            for name,value in zones.items():
-                if name == zone and value[0].version == ip_version:
-                    ports[port_id] = zones 
-        assert not ports is None
+        ports, ports_for_overload = self._filter_ports(avail_ports, zone, ip_version)
         port = self._select_port_with_bandwidth(gbps, ports, host_id)
         if port is None:
             LOG.info("No port has bandwidth available. "
                      "Choosing least-overloaded.")
-            port = self._select_port_least_overloaded(ports, host_id)
+            port = self._select_port_least_overloaded(ports_for_overload, host_id)
         LOG.info("Selected port %s.", port)
         return port
 

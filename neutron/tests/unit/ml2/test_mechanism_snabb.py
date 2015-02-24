@@ -115,6 +115,18 @@ class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
         port = self.mech._choose_port('host1', 'zone1', 6, 5)
         self.assertEqual(port, 'port2')
 
+    def test_choose_least_overloaded_ipv4_2(self):
+        """Pick the least-overloaded port when there is IPv4 zone."""
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPAddress('101::'), 101)},
+                                        'port1': {'zone1': (IPAddress('102::'), 101),
+                                                  'zone2': (IPAddress('192.168.201.0'), 201)},
+                                        'port2': {'zone1': (IPAddress('301::'), 301)}}}
+        self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 1},
+                                         ('host1', 'port1'): {'p2': 0},
+                                         ('host1', 'port2'): {'p3': 2}}
+        port = self.mech._choose_port('host1', 'zone1', 6, 5)
+        self.assertEqual(port, 'port2')
+
 class SnabbMechanismTestBasicGet(test_plugin.TestBasicGet, SnabbTestCase):
     pass
 
