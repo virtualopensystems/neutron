@@ -294,3 +294,33 @@ class SnabbMechanismTestZoneBind(SnabbTestCase):
         context.set_id_zone_gbps_ip('port_id_2', 'zone65', 1, '0.0.0.10')
         self.mech.bind_port(context)
         self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('192.168.111.2'))
+
+class SnabbMechanismTestZoneValidatePortBind(SnabbTestCase):
+    def test_validate_port_binding(self):
+        port = {portbindings.PROFILE: {'tx_police_gbps':'false'}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'tx_police_gbps')
+
+        port = {portbindings.PROFILE: {'rx_police_gbps':'false'}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'rx_police_gbps')
+
+        port = {portbindings.PROFILE: {'l2tpv3_remote_ip':'false'}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'l2tpv3_remote_ip')
+
+        port = {portbindings.PROFILE: {'l2tpv3_next_hop':'false'}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'l2tpv3_next_hop')
+
+        port = {portbindings.PROFILE: {'l2tpv3_local_cookie':'12345678901234567890'}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'l2tpv3_local_cookie')
+
+        port = {portbindings.PROFILE: {'l2tpv3_remote_cookie':'12345678901234567890'}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'l2tpv3_remote_cookie')
+
+        port = {portbindings.PROFILE: {'l2tpv3_session':(0xffffffff + 1)}, portbindings.VIF_DETAILS: {}}
+        result = self.mech._validate_port_binding(port)
+        self.assertEqual(result,'l2tpv3_session')

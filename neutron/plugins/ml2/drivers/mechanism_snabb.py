@@ -28,8 +28,10 @@ from neutron.extensions import portbindings
 from neutron.openstack.common import log
 from neutron.openstack.common.db.sqlalchemy import models
 from neutron.plugins.ml2 import driver_api as api
+from neutron.plugins.ml2.common import exceptions as ml2_exc
 
 from oslo.config import cfg
+from netaddr.ip import IPAddress
 
 LOG = log.getLogger(__name__)
 
@@ -357,7 +359,67 @@ class SnabbMechanismDriver(api.MechanismDriver):
         False to indicate this to callers.
         """
         return segment[api.NETWORK_TYPE] == 'zone'
-    
+
+    def _is_float(self, a, name):
+        try:
+            if a.get(name):
+                float(a.get(name))
+            return True
+        except ValueError:
+            return False
+
+    def _is_ip(self, a, name):
+        try:
+            if a.get(name):
+                IPAddress(a.get(name))
+            return True
+        except :
+            return False
+
+    def _validate_port_binding(self, port):
+        profile = port[portbindings.PROFILE]
+
+        if not self._is_float(profile, 'tx_police_gbps'): return 'tx_police_gbps'
+        if not self._is_float(profile, 'rx_police_gbps'): return 'rx_police_gbps'
+        if not self._is_ip(profile, 'l2tpv3_remote_ip'): return 'l2tpv3_remote_ip'
+        if not self._is_ip(profile, 'l2tpv3_next_hop'): return 'l2tpv3_next_hop'
+        v = profile.get('l2tpv3_local_cookie')
+        if v and len(v) > 16: return 'l2tpv3_local_cookie'
+        v = profile.get('l2tpv3_remote_cookie')
+        if v and len(v) > 16: return 'l2tpv3_remote_cookie'
+        v = profile.get('l2tpv3_session')
+        if v and int(v) > 0xffffffff: return 'l2tpv3_session'
+
+        vif_details = port[portbindings.VIF_DETAILS]
+        if not self._is_float(vif_details, 'zone_gbps'): return 'zone_gbps'
+        if not self._is_ip(vif_details, 'zone_ip'): return 'zone_ip'
+        v = profile.get('zone_vlan')
+        if v and int(v) > 4095: return 'zone_vlan'
+
+    def create_port_precommit(self, context):
+        """.
+        """
+        LOG.debug("Attempting to create port %(port)s on network %(network)s "
+                  "with profile %(profile)s",
+                  {'port': context.current['id'],
+                   'network': context.network.current['id']})
+        fault = self._validate_port_binding(context.current)
+        if fault:
+            LOG.error("Invalid parameter %", fault)
+            raise ml2_exc.MechanismDriverError()
+
+    def update_port_precommit(self, context):
+        """.
+        """
+        LOG.debug("Attempting to update port %(port)s on network %(network)s "
+                  "with profile %(profile)s",
+                  {'port': context.current['id'],
+                   'network': context.network.current['id']})
+        fault = self._validate_port_binding(context.current)
+        if fault:
+            LOG.error("Invalid parameter %", fault)
+            raise ml2_exc.MechanismDriverError()
+
     def delete_port_postcommit(self, context):
         vif_type = context.current.get(portbindings.VIF_TYPE)
         if vif_type == portbindings.VIF_TYPE_VHOSTUSER:
