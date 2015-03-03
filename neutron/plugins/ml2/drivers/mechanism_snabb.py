@@ -25,7 +25,7 @@ import neutron.db.models_v2 as models_v2
 from neutron.common import constants as n_const
 from neutron.common import exceptions as exc
 from neutron.extensions import portbindings
-from neutron.openstack.common import log
+from neutron.openstack.common import log, jsonutils
 from neutron.openstack.common.db.sqlalchemy import models
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.common import exceptions as ml2_exc
@@ -131,25 +131,21 @@ class SnabbMechanismDriver(api.MechanismDriver):
         zonefile = cfg.CONF.ml2_snabb.zone_definition_file
         networks = {}
         if zonefile != '':
-            with open(zonefile, 'rU') as f:
-                for entry in f:
-                    entry = entry.strip()
-                    LOG.debug("zone file entry: %s", entry)
-                    try:
-                        host, port, zone, vlan, subnet = entry.split('|')
-                        host = host.strip()
-                        port = port.strip()
-                        zone = int(zone)
-                        vlan = int(vlan)
-                        subnet = netaddr.IPNetwork(subnet)
-                        networks.setdefault(host, {})
-                        networks[host].setdefault(port, {})
-                        networks[host][port][zone] = (subnet, vlan)
-                        LOG.debug("Loaded zone host:%s port:%s "
-                                  "zone:%s subnet:%s vlan:%s",
-                                  host, port, zone, subnet, vlan)
-                    except ValueError:
-                        LOG.error("Bad zone entry: %s", entry)
+            zonelines = jsonutils.load(open(zonefile))
+            for entry in zonelines:
+                host, port, zone, vlan, subnet = entry["host"], entry["port"], entry["zone"], entry["vlan"], entry["subnet"]
+                host = host.strip()
+                port = port.strip()
+                zone = int(zone)
+                vlan = int(vlan)
+                subnet = netaddr.IPNetwork(subnet)
+                networks.setdefault(host, {})
+                networks[host].setdefault(port, {})
+                networks[host][port][zone] = (subnet, vlan)
+                LOG.debug("Loaded zone host:%s port:%s "
+                          "zone:%s subnet:%s vlan:%s",
+                          host, port, zone, subnet, vlan)
+
         return networks
 
     def _filter_ports(self, avail_ports, zone, ip_version):
