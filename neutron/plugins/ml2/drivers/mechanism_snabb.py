@@ -270,8 +270,11 @@ class SnabbMechanismDriver(api.MechanismDriver):
 
                 zone_ip = self._calculate_ip(context.current['tenant_id'], subnet, zone_ip)
 
+                profile = context.current[portbindings.PROFILE]
+                if profile is None: profile = context.original[portbindings.PROFILE]
                 # Store all decisions in the port vif_details.
                 vif_details = {portbindings.CAP_PORT_FILTER: True,
+                               portbindings.PROFILE: profile,
                                'zone_host': host_id,
                                'zone_ip': zone_ip,
                                'zone_vlan': vlan,
