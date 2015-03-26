@@ -68,18 +68,18 @@ class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
 
     def test_choose_port_any(self):
         """Pick any port when they are all equally good."""
-        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101)},
-                                        'port1': {'zone1': (IPNetwork('201::/64'), 201)},
-                                        'port2': {'zone1': (IPNetwork('301::/64'), 301)}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101, [])},
+                                        'port1': {'zone1': (IPNetwork('201::/64'), 201, [])},
+                                        'port2': {'zone1': (IPNetwork('301::/64'), 301, [])}}}
         self.mech.allocated_bandwidth = {}
         port = self.mech._choose_port('host1', 'zone1', 6, 5)
         self.assertIsNotNone(port, 'port0')
 
     def test_choose_port_loaded(self):
         """Pick the most loaded port that has capacity available."""
-        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101)},
-                                        'port1': {'zone1': (IPNetwork('201::/64'), 201)},
-                                        'port2': {'zone1': (IPNetwork('301::/64'), 301)}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101, [])},
+                                        'port1': {'zone1': (IPNetwork('201::/64'), 201, [])},
+                                        'port2': {'zone1': (IPNetwork('301::/64'), 301, [])}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 0},
                                          ('host1', 'port1'): {'p2': 1},
                                          ('host1', 'port2'): {'p3': 0}}
@@ -88,9 +88,9 @@ class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
 
     def test_choose_port_not_overloaded(self):
         """Don't pick the port that will be overloaded."""
-        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101)},
-                                        'port1': {'zone1': (IPNetwork('201::/64'), 201)},
-                                        'port2': {'zone1': (IPNetwork('301::/64'), 301)}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101, [])},
+                                        'port1': {'zone1': (IPNetwork('201::/64'), 201, [])},
+                                        'port2': {'zone1': (IPNetwork('301::/64'), 301, [])}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 1},
                                          ('host1', 'port1'): {'p2': 6},
                                          ('host1', 'port1'): {'p2': 0}}
@@ -99,9 +99,9 @@ class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
 
     def test_choose_least_overloaded_ipv6(self):
         """Pick the least-overloaded port."""
-        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101)},
-                                        'port1': {'zone1': (IPNetwork('201::/64'), 201)},
-                                        'port2': {'zone1': (IPNetwork('301::/64'), 301)}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101, [])},
+                                        'port1': {'zone1': (IPNetwork('201::/64'), 201, [])},
+                                        'port2': {'zone1': (IPNetwork('301::/64'), 301, [])}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 99},
                                          ('host1', 'port1'): {'p2': 42},
                                          ('host1', 'port2'): {'p3': 76}}
@@ -110,9 +110,9 @@ class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
 
     def test_choose_least_overloaded_ipv4(self):
         """Pick the least-overloaded port when there is IPv4."""
-        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101)},
-                                        'port1': {'zone1': (IPNetwork('192.168.201.0/24'), 201)},
-                                        'port2': {'zone1': (IPNetwork('301::/64'), 301)}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101, [])},
+                                        'port1': {'zone1': (IPNetwork('192.168.201.0/24'), 201, [])},
+                                        'port2': {'zone1': (IPNetwork('301::/64'), 301, [])}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 99},
                                          ('host1', 'port1'): {'p2': 42},
                                          ('host1', 'port2'): {'p3': 76}}
@@ -121,10 +121,10 @@ class SnabbMechanismTestZoneChoosePort(SnabbTestCase):
 
     def test_choose_least_overloaded_ipv4_2(self):
         """Pick the least-overloaded port when there is IPv4 zone."""
-        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101)},
-                                        'port1': {'zone1': (IPNetwork('102::/64'), 101),
-                                                  'zone2': (IPNetwork('192.168.201.0/24'), 201)},
-                                        'port2': {'zone1': (IPNetwork('301::/64'), 301)}}}
+        self.mech.networks = {'host1': {'port0': {'zone1': (IPNetwork('101::/64'), 101, [])},
+                                        'port1': {'zone1': (IPNetwork('102::/64'), 101, []),
+                                                  'zone2': (IPNetwork('192.168.201.0/24'), 201, [])},
+                                        'port2': {'zone1': (IPNetwork('301::/64'), 301, [])}}}
         self.mech.allocated_bandwidth = {('host1', 'port0'): {'p1': 1},
                                          ('host1', 'port1'): {'p2': 0},
                                          ('host1', 'port2'): {'p3': 2}}
@@ -242,17 +242,17 @@ class SnabbMechanismTestZoneBind(SnabbTestCase):
         context = FakePortContext([], 'host1')
         self.mech.networks = {'host1': {
                                'port0': {
-                                         'zone1': (IPNetwork('101::/64'), 101), 
-                                         'zone63': (IPNetwork('163::/64'), 163)},
+                                         'zone1': (IPNetwork('101::/64'), 101, []),
+                                         'zone63': (IPNetwork('163::/64'), 163, [])},
                                'port1': {
-                                         'zone1': (IPNetwork('201::/64'), 201),
-                                         'zone63': (IPNetwork('263::/64'), 263)}
+                                         'zone1': (IPNetwork('201::/64'), 201, [IPAddress("201::1")]),
+                                         'zone63': (IPNetwork('263::/64'), 263, [])}
                               }}
 
         # bind 10Gbps port
         context.set_id_zone_gbps_ip('port_id_0', 'zone1', 9, '0::10')
         self.mech.bind_port(context)
-        self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('101::2'))
+        self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('101::1'))
 
         # bind 2.5Gbps port in same zone
         context.set_id_zone_gbps_ip('port_id_1', 'zone1', 2.5, '0::10')
@@ -262,20 +262,20 @@ class SnabbMechanismTestZoneBind(SnabbTestCase):
         # bind 2.5Gbps port in different zone
         context.set_id_zone_gbps_ip('port_id_2', 'zone63', 2.5, '0::10')
         self.mech.bind_port(context)
-        self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('263::2'))
+        self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('263::1'))
 
     def test_bind_port_ipv4(self):
         """Bind ports."""
         context = FakePortContext([], 'host1')
         self.mech.networks = {'host1': {
                                'port0': {
-                                         'zone1': (IPNetwork('101::/64'), 101),
-                                         'zone63': (IPNetwork('163::/64'), 163),
-                                         'zone65': (IPNetwork('165::/64'), 165)},
+                                         'zone1': (IPNetwork('101::/64'), 101, []),
+                                         'zone63': (IPNetwork('163::/64'), 163, []),
+                                         'zone65': (IPNetwork('165::/64'), 165, [])},
                                'port1': {
-                                         'zone1': (IPNetwork('201::/64'), 201),
-                                         'zone63': (IPNetwork('263::/64'), 263),
-                                         'zone65': (IPNetwork('192.168.111.0/24'), 265)}
+                                         'zone1': (IPNetwork('201::/64'), 201, []),
+                                         'zone63': (IPNetwork('263::/64'), 263, []),
+                                         'zone65': (IPNetwork('192.168.111.0/24'), 265, [IPAddress("192.168.111.1"), IPAddress("192.168.111.3")])}
                               }}
 
         # bind 1Gbps IPv4 port
@@ -285,7 +285,7 @@ class SnabbMechanismTestZoneBind(SnabbTestCase):
 
         context.set_id_zone_gbps_ip('port_id_1', 'zone65', 1, '0.0.0.10')
         self.mech.bind_port(context)
-        self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('192.168.111.3'))
+        self.assertEqual(context.last_bound()[portbindings.VIF_DETAILS]['zone_ip'], IPAddress('192.168.111.4'))
         
         
         context.set_id_zone_gbps_ip('port_id_0', 'zone65', 1, '192.168.111.2')

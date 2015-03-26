@@ -134,6 +134,8 @@ class SnabbMechanismDriver(api.MechanismDriver):
             zonelines = jsonutils.load(open(zonefile))
             for entry in zonelines:
                 host, port, zone, vlan, subnet = entry["host"], entry["port"], entry["zone"], entry["vlan"], entry["subnet"]
+                used = []
+                for u in entry["used"]: used.append(IPAddress(u))
                 host = host.strip()
                 port = port.strip()
                 zone = int(zone)
@@ -141,7 +143,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
                 subnet = netaddr.IPNetwork(subnet)
                 networks.setdefault(host, {})
                 networks[host].setdefault(port, {})
-                networks[host][port][zone] = (subnet, vlan)
+                networks[host][port][zone] = (subnet, vlan, used)
                 LOG.debug("Loaded zone host:%s port:%s "
                           "zone:%s subnet:%s vlan:%s",
                           host, port, zone, subnet, vlan)
@@ -209,20 +211,18 @@ class SnabbMechanismDriver(api.MechanismDriver):
                 best_fit, best_fit_allocated = port_id, allocated
         return best_fit
 
-    def _calculate_ip(self, tenant_id, subnet, orig_zone_ip):
+    def _calculate_ip(self, tenant_id, subnet, orig_zone_ip, used):
 
         zone_ip = orig_zone_ip or self.props.get_free_ip(tenant_id, subnet)
 
         if zone_ip == None:
             LOG.error("No free IPs in subnet %s", subnet)
-            
-        # TODO: find a better way to 
-        # hack for DT-lab
-        # the first IP in the subnet is the GW - so skip it
-        if zone_ip == subnet.ip + 1:
-            # remember it - the GW IP is already taken
-            self.props.remember_ip(tenant_id, subnet, zone_ip)
-            # now get the next free IP
+
+        # check if selected IP is in the used IPs
+        if zone_ip in used:
+            # remember all used IPs
+            for u in used: self.props.remember_ip(tenant_id, subnet, u)
+            # now get the new free IP
             zone_ip = self.props.get_free_ip(tenant_id, subnet)
 
         self.props.remember_ip(tenant_id, subnet, zone_ip)
@@ -262,13 +262,13 @@ class SnabbMechanismDriver(api.MechanismDriver):
                 port_id = self._choose_port(host_id, zone, base_ip.version, gbps)
                 # Calculate the correct IP address
                 try:
-                    subnet, vlan = self.networks[host_id][port_id][zone]
+                    subnet, vlan, used = self.networks[host_id][port_id][zone]
                 except KeyError:
                     msg = ("zone %s not found for host:%s port:%s" %
                            (zone, host_id, port_id))
                     raise exc.InvalidInput(error_message=msg)
 
-                zone_ip = self._calculate_ip(context.current['tenant_id'], subnet, zone_ip)
+                zone_ip = self._calculate_ip(context.current['tenant_id'], subnet, zone_ip, used)
 
                 profile = context.current[portbindings.PROFILE]
                 if profile is None: profile = context.original[portbindings.PROFILE]
