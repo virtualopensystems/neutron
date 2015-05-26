@@ -398,8 +398,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def create_port_precommit(self, context):
         """.
         """
-        LOG.debug("Attempting to create port %(port)s on network %(network)s "
-                  "with profile %(profile)s",
+        LOG.debug("Attempting to create port %(port)s on network %(network)s",
                   {'port': context.current['id'],
                    'network': context.network.current['id']})
         fault = self._validate_port_binding(context.current)
@@ -410,8 +409,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def update_port_precommit(self, context):
         """.
         """
-        LOG.debug("Attempting to update port %(port)s on network %(network)s "
-                  "with profile %(profile)s",
+        LOG.debug("Attempting to update port %(port)s on network %(network)s",
                   {'port': context.current['id'],
                    'network': context.network.current['id']})
         fault = self._validate_port_binding(context.current)
