@@ -17,21 +17,20 @@
 # @author: Nikolay Nikolaev
 
 import netaddr
-import sqlalchemy as sa
 import neutron.db.api as db
 import neutron.db.model_base as model_base
 import neutron.db.models_v2 as models_v2
+import sqlalchemy as sa
 
 from neutron.common import constants as n_const
 from neutron.common import exceptions as exc
 from neutron.extensions import portbindings
 from neutron.openstack.common import log, jsonutils
-from neutron.openstack.common.db.sqlalchemy import models
-from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.common import exceptions as ml2_exc
+from neutron.plugins.ml2 import driver_api as api
 
-from oslo.config import cfg
 from netaddr.ip import IPAddress
+from oslo.config import cfg
 
 LOG = log.getLogger(__name__)
 
@@ -50,35 +49,37 @@ PORT_GBPS = 10
 # Default bandwidth reservation (Gbps) when not specified.
 DEFAULT_GBPS_ALLOCATION = 1.0
 
+
 class SnabbMechanismDriverProps(model_base.BASEV2, models_v2.HasTenant):
+
     """Internal representation of allocated IP addresses from snabb.
     """
     __tablename__ = 'snabb_mechanism_props'
     subnet = sa.Column(sa.String(64), nullable=False, primary_key=False)
     ip_address = sa.Column(sa.String(64), nullable=False, primary_key=True)
-    
+
     def remember_ip(self, tenant_id, subnet, ip):
         """Stores all relevant information about a VM in repository."""
-        
+
         session = db.get_session()
         with session.begin():
             model = SnabbMechanismDriverProps
-            props = session.query(model).filter(model.tenant_id == tenant_id, 
+            props = session.query(model).filter(model.tenant_id == tenant_id,
                                                 model.subnet == subnet,
                                                 model.ip_address == ip).first()
             if props is None:
-                props = SnabbMechanismDriverProps(tenant_id = tenant_id,
-                                                  subnet = subnet,
-                                                  ip_address = ip)
+                props = SnabbMechanismDriverProps(tenant_id=tenant_id,
+                                                  subnet=subnet,
+                                                  ip_address=ip)
                 session.add(props)
 
     def remove_ip(self, tenant_id, ip):
         """Remove all relevant information about a VM in repository."""
-        
+
         session = db.get_session()
         with session.begin():
             model = SnabbMechanismDriverProps
-            props = session.query(model).filter(model.tenant_id == tenant_id, 
+            props = session.query(model).filter(model.tenant_id == tenant_id,
                                                 model.ip_address == ip).first()
             if props:
                 session.delete(props)
@@ -88,20 +89,22 @@ class SnabbMechanismDriverProps(model_base.BASEV2, models_v2.HasTenant):
         """
         session = db.get_session()
         result = None
-        
+
         # enumerate all hosts in the subnet and check if already used
         for ip in subnet.iter_hosts():
             props = None
             with session.begin():
                 model = SnabbMechanismDriverProps
-                props = session.query(model).filter(model.tenant_id == tenant_id, 
-                                                    model.subnet == subnet,
-                                                    model.ip_address == ip).first()
+                props = session.query(model).filter(
+                    model.tenant_id == tenant_id,
+                    model.subnet == subnet,
+                    model.ip_address == ip).first()
             if props is None:
                 result = ip
                 break
-            
+
         return result
+
 
 class SnabbMechanismDriver(api.MechanismDriver):
 
@@ -124,7 +127,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
         self.networks = self._load_zones()
         # Dictionary of {(host_id, port_name): gbps_currently_allocated}
         self.allocated_bandwidth = None
-        
+
         self.props = SnabbMechanismDriverProps()
 
     def _load_zones(self):
@@ -133,9 +136,11 @@ class SnabbMechanismDriver(api.MechanismDriver):
         if zonefile != '':
             zonelines = jsonutils.load(open(zonefile))
             for entry in zonelines:
-                host, port, zone, vlan, subnet = entry["host"], entry["port"], entry["zone"], entry["vlan"], entry["subnet"]
+                host, port, zone, vlan, subnet = entry["host"], entry[
+                    "port"], entry["zone"], entry["vlan"], entry["subnet"]
                 used = []
-                for u in entry["used"]: used.append(IPAddress(u))
+                for u in entry["used"]:
+                    used.append(IPAddress(u))
                 host = host.strip()
                 port = port.strip()
                 zone = int(zone)
@@ -151,7 +156,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
         return networks
 
     def _filter_ports(self, avail_ports, zone, ip_version):
-        """Filter the availabale ports, matching zone and ip version """
+        """Filter the availabale ports, matching zone and ip version."""
         # zone_ports -   filtered ports that contain
         #                the requested zone and requested ip version subnet
         # ipv_ports  -   filtered ports that contain
@@ -159,19 +164,20 @@ class SnabbMechanismDriver(api.MechanismDriver):
         #                but not if there are is othe IP subnet
         ipv_ports, zone_ports = {}, {}
 
-        for port_id,zones in avail_ports.items():
-            for name,value in zones.items():
+        for port_id, zones in avail_ports.items():
+            for name, value in zones.items():
                 if name == zone and value[0].version == ip_version:
                     zone_ports[port_id] = zones
                     break
 
-        for port_id,zones in zone_ports.items():
+        for port_id, zones in zone_ports.items():
             add_port = True
-            for name,value in zones.items():
+            for name, value in zones.items():
                 if value[0].version != ip_version:
                     add_port = False
                     break
-            if add_port: ipv_ports[port_id] = zones
+            if add_port:
+                ipv_ports[port_id] = zones
 
         return ipv_ports, zone_ports
 
@@ -181,12 +187,15 @@ class SnabbMechanismDriver(api.MechanismDriver):
                   gbps, host_id)
         # Port that best fits, and how many gbps it has available.
         avail_ports = self.networks[host_id]
-        ports, ports_for_overload = self._filter_ports(avail_ports, zone, ip_version)
+        ports, ports_for_overload = self._filter_ports(
+            avail_ports, zone, ip_version)
         port = self._select_port_with_bandwidth(gbps, ports, host_id)
         if port is None:
             LOG.info("No port has bandwidth available. "
                      "Choosing least-overloaded.")
-            port = self._select_port_least_overloaded(ports_for_overload, host_id)
+            port = self._select_port_least_overloaded(
+                ports_for_overload,
+                host_id)
         LOG.info("Selected port %s.", port)
         return port
 
@@ -197,7 +206,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
             allocated = self._get_allocated_bandwidth(host_id, port_id)
             avail = PORT_GBPS - allocated
             # Check for a best (tightest) fit
-            if avail >= gbps and (best_fit == None or avail < best_fit_avail):
+            if avail >= gbps and (best_fit is None or avail < best_fit_avail):
                 best_fit, best_fit_avail = port_id, avail
         return best_fit
 
@@ -215,20 +224,20 @@ class SnabbMechanismDriver(api.MechanismDriver):
 
         zone_ip = orig_zone_ip or self.props.get_free_ip(tenant_id, subnet)
 
-        if zone_ip == None:
+        if zone_ip is None:
             LOG.error("No free IPs in subnet %s", subnet)
 
         # check if selected IP is in the used IPs
         if zone_ip in used:
             # remember all used IPs
-            for u in used: self.props.remember_ip(tenant_id, subnet, u)
+            for u in used:
+                self.props.remember_ip(tenant_id, subnet, u)
             # now get the new free IP
             zone_ip = self.props.get_free_ip(tenant_id, subnet)
 
         self.props.remember_ip(tenant_id, subnet, zone_ip)
-        
-        return zone_ip
 
+        return zone_ip
 
     def bind_port(self, context):
         """Bind a Neutron port to a suitable physical port.
@@ -259,7 +268,11 @@ class SnabbMechanismDriver(api.MechanismDriver):
                     msg = "fixed_ips address required to bind zone port."
                     raise exc.InvalidInput(error_message=msg)
                 base_ip = netaddr.IPAddress(base_ip)
-                port_id = self._choose_port(host_id, zone, base_ip.version, gbps)
+                port_id = self._choose_port(
+                    host_id,
+                    zone,
+                    base_ip.version,
+                    gbps)
                 # Calculate the correct IP address
                 try:
                     subnet, vlan, used = self.networks[host_id][port_id][zone]
@@ -268,10 +281,15 @@ class SnabbMechanismDriver(api.MechanismDriver):
                            (zone, host_id, port_id))
                     raise exc.InvalidInput(error_message=msg)
 
-                zone_ip = self._calculate_ip(context.current['tenant_id'], subnet, zone_ip, used)
+                zone_ip = self._calculate_ip(
+                    context.current['tenant_id'],
+                    subnet,
+                    zone_ip,
+                    used)
 
                 profile = context.current[portbindings.PROFILE]
-                if profile is None: profile = context.original[portbindings.PROFILE]
+                if profile is None:
+                    profile = context.original[portbindings.PROFILE]
                 # Store all decisions in the port vif_details.
                 vif_details = {portbindings.CAP_PORT_FILTER: True,
                                portbindings.PROFILE: profile,
@@ -372,28 +390,38 @@ class SnabbMechanismDriver(api.MechanismDriver):
             if a.get(name):
                 IPAddress(a.get(name))
             return True
-        except :
+        except Exception:
             return False
 
     def _validate_port_binding(self, port):
         profile = port[portbindings.PROFILE]
 
-        if not self._is_float(profile, 'tx_police_gbps'): return 'tx_police_gbps'
-        if not self._is_float(profile, 'rx_police_gbps'): return 'rx_police_gbps'
-        if not self._is_ip(profile, 'l2tpv3_remote_ip'): return 'l2tpv3_remote_ip'
-        if not self._is_ip(profile, 'l2tpv3_next_hop'): return 'l2tpv3_next_hop'
+        if not self._is_float(profile, 'tx_police_gbps'):
+            return 'tx_police_gbps'
+        if not self._is_float(profile, 'rx_police_gbps'):
+            return 'rx_police_gbps'
+        if not self._is_ip(profile, 'l2tpv3_remote_ip'):
+            return 'l2tpv3_remote_ip'
+        if not self._is_ip(profile, 'l2tpv3_next_hop'):
+            return 'l2tpv3_next_hop'
         v = profile.get('l2tpv3_local_cookie')
-        if v and len(v) > 16: return 'l2tpv3_local_cookie'
+        if v and len(v) > 16:
+            return 'l2tpv3_local_cookie'
         v = profile.get('l2tpv3_remote_cookie')
-        if v and len(v) > 16: return 'l2tpv3_remote_cookie'
+        if v and len(v) > 16:
+            return 'l2tpv3_remote_cookie'
         v = profile.get('l2tpv3_session')
-        if v and int(v) > 0xffffffff: return 'l2tpv3_session'
+        if v and int(v) > 0xffffffff:
+            return 'l2tpv3_session'
 
         vif_details = port[portbindings.VIF_DETAILS]
-        if not self._is_float(vif_details, 'zone_gbps'): return 'zone_gbps'
-        if not self._is_ip(vif_details, 'zone_ip'): return 'zone_ip'
+        if not self._is_float(vif_details, 'zone_gbps'):
+            return 'zone_gbps'
+        if not self._is_ip(vif_details, 'zone_ip'):
+            return 'zone_ip'
         v = profile.get('zone_vlan')
-        if v and int(v) > 4095: return 'zone_vlan'
+        if v and int(v) > 4095:
+            return 'zone_vlan'
 
     def create_port_precommit(self, context):
         """.
@@ -426,4 +454,3 @@ class SnabbMechanismDriver(api.MechanismDriver):
             vm_ip = vif_details['zone_ip']
 
             self.props.remove_ip(tenant_id, vm_ip)
-
