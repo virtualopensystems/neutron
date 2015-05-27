@@ -257,7 +257,26 @@ class SnabbMechanismDriver(api.MechanismDriver):
         self._update_allocated_bandwidth(context)
         # REVISIT(lukego) Why is binding:profile set in
         # context.original but {} in context.current?
-        zone_ip, gbps = self._requested_gbps(context.original)
+        orig = context.original
+        gbps = self._requested_gbps(orig)
+        orig_zone_ip = orig[portbindings.VIF_DETAILS].get('zone_ip')
+
+        if orig_zone_ip is not None:
+            if context.current['binding:host_id'] != context.original[
+                    'binding:host_id']:
+                LOG.debug("Port %(port)s with ip %(ip)s "
+                          "migrated from %(host_id)s "
+                          "to %(orig_host_id)s",
+                          {'port': context.current['id'],
+                           'ip': orig_zone_ip,
+                           'host_id': context.network.current['id'],
+                           'orig_host_id':
+                           context.original[portbindings.PROFILE]})
+                # the port has an allocated IP but is migrated
+                self.props.remove_ip(context.current['tenant_id'],
+                                     orig_zone_ip)
+                orig_zone_ip = None
+
         for segment in context.network.network_segments:
             if self.check_segment(segment):
                 db_port_id = context.current['id']
@@ -284,7 +303,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
                 zone_ip = self._calculate_ip(
                     context.current['tenant_id'],
                     subnet,
-                    zone_ip,
+                    orig_zone_ip,
                     used)
 
                 profile = context.current[portbindings.PROFILE]
@@ -319,8 +338,7 @@ class SnabbMechanismDriver(api.MechanismDriver):
         gbps = (port[portbindings.PROFILE].get('zone_gbps') or
                 port[portbindings.VIF_DETAILS].get('zone_gbps') or
                 DEFAULT_GBPS_ALLOCATION)
-        ip = port[portbindings.VIF_DETAILS].get('zone_ip')
-        return ip, float(gbps)
+        return float(gbps)
 
     def _assigned_ip(self, port):
         """Return the IP address assigned to Port."""
@@ -448,6 +466,10 @@ class SnabbMechanismDriver(api.MechanismDriver):
     def delete_port_postcommit(self, context):
         vif_type = context.current.get(portbindings.VIF_TYPE)
         if vif_type == portbindings.VIF_TYPE_VHOSTUSER:
+            LOG.debug(
+                "Deleting port %(port)s on network %(network)s",
+                {'port': context.current['id'],
+                 'network': context.network.current['id']})
             port_context = context.current
             tenant_id = port_context['tenant_id']
             vif_details = port_context[portbindings.VIF_DETAILS]
